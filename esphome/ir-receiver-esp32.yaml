@@ -1,0 +1,88 @@
+## ESP32 IR Receiver — recommended
+##
+## Uses the ESP32 hardware RMT peripheral for accurate, jitter-free IR capture.
+## Supports any 38 kHz IR receiver module (TSOP38238, VS1838B, etc.).
+##
+## Wiring:
+##   VCC  → 3V3
+##   GND  → GND
+##   OUT  → GPIO14  (change pin below to suit your board)
+##
+## Prerequisites:
+##   - ESPHome with experimental infrared / ir_rf_proxy platform (pairs with HA 2026.6)
+##   - Home Assistant 2026.6.0+ with the ir_remote HACS integration installed
+##
+## Flash:
+##   esphome run ir-receiver-esp32.yaml
+
+substitutions:
+  name: ir-receiver
+  friendly_name: "IR Receiver"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev           # change to your board (e.g. lolin32, esp32-s3-devkitc-1)
+  framework:
+    type: esp-idf           # ESP-IDF gives the most accurate RMT timing
+
+logger:
+  level: INFO
+  # level: DEBUG            # uncomment to see raw timing dumps during setup
+
+# Native API — local transport HA uses; replaces MQTT entirely.
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+# --------------------------------------------------------------------------
+# 1. Raw IR capture via the ESP32 RMT peripheral.
+#    idle: gap that marks end-of-transmission; tune per remote if captures
+#    are truncated (increase) or run together (decrease).
+# --------------------------------------------------------------------------
+remote_receiver:
+  id: ir_rx
+  pin:
+    number: GPIO14
+    inverted: true          # most 38 kHz modules idle HIGH / are active-LOW
+    mode:
+      input: true
+      pullup: true
+  idle: 25ms
+  buffer_size: 2kb
+  # tolerance: 25%          # widen if identical buttons get different fingerprints
+  # filter: 50us            # suppress ultra-short noise spikes
+  # dump: raw               # uncomment to log raw timings to the ESPHome console
+
+# --------------------------------------------------------------------------
+# 2. Bridge the receiver to HA's native Infrared platform.
+#    HA will create an infrared.* receiver entity automatically once the
+#    device is adopted — that entity is what the ir_remote integration listens on.
+# --------------------------------------------------------------------------
+infrared:
+  - platform: ir_rf_proxy
+    name: "IR Receiver"
+    remote_receiver_id: ir_rx
+    # frequency: 0          # 0 = IR (38 kHz carrier); set > 0 for RF
+
+# --------------------------------------------------------------------------
+# Optional: restart button visible in HA
+# --------------------------------------------------------------------------
+button:
+  - platform: restart
+    name: Restart
