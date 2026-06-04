@@ -1,0 +1,90 @@
+## ESP8266 IR Receiver — bit-bang fallback
+##
+## ⚠  The ESP32 config is strongly preferred. ESP8266 has no hardware RMT
+##    peripheral — IR timings are captured via bit-banging, which is less
+##    accurate and can be disrupted by Wi-Fi interrupts. Expect occasional
+##    mis-captures; widen tolerance and filter if needed.
+##
+## Tested boards: NodeMCU v2/v3, Wemos D1 Mini.
+## GPIO numbering below uses NodeMCU labels (D5 = GPIO14).
+##
+## Wiring:
+##   VCC  → 3V3  (some modules accept 5 V; check your datasheet)
+##   GND  → GND
+##   OUT  → D5   (GPIO14 on NodeMCU / Wemos D1 Mini)
+##
+## Prerequisites:
+##   - ESPHome with experimental infrared / ir_rf_proxy platform (pairs with HA 2026.6)
+##   - Home Assistant 2026.6.0+ with the ir_remote HACS integration installed
+##
+## Flash:
+##   esphome run ir-receiver-esp8266.yaml
+
+substitutions:
+  name: ir-receiver-8266
+  friendly_name: "IR Receiver (ESP8266)"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp8266:
+  board: nodemcuv2          # change to d1_mini, esp12e, etc. to match your board
+  # restore_from_flash: true  # uncomment if you use globals that persist across reboots
+
+logger:
+  level: INFO
+  # level: DEBUG
+
+# Native API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # power_save_mode: none   # uncomment if Wi-Fi interrupts cause capture glitches
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+# --------------------------------------------------------------------------
+# 1. Raw IR capture (bit-bang on ESP8266).
+#    Increase tolerance to 35%+ and add a filter if you see unstable
+#    fingerprints for the same button press.
+# --------------------------------------------------------------------------
+remote_receiver:
+  id: ir_rx
+  pin:
+    number: D5              # GPIO14 on NodeMCU / Wemos D1 Mini
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  idle: 25ms
+  buffer_size: 2kb
+  tolerance: 30%            # higher than ESP32 default to compensate for bit-bang jitter
+  filter: 50us              # ignore noise spikes shorter than this
+  # dump: raw               # uncomment to log raw timings during setup
+
+# --------------------------------------------------------------------------
+# 2. Bridge to HA's native Infrared platform.
+# --------------------------------------------------------------------------
+infrared:
+  - platform: ir_rf_proxy
+    name: "IR Receiver"
+    remote_receiver_id: ir_rx
+
+# --------------------------------------------------------------------------
+# Optional: restart button
+# --------------------------------------------------------------------------
+button:
+  - platform: restart
+    name: Restart
