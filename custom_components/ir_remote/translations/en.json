@@ -1,0 +1,85 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up IR Remote",
+        "description": "Select the infrared receiver entity to listen on.",
+        "data": {
+          "name": "Remote name",
+          "receiver": "Infrared receiver entity"
+        },
+        "data_description": {
+          "receiver": "The infrared receiver entity provided by ESPHome, Broadlink, or another integration."
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This receiver is already configured.",
+      "no_infrared_receivers": "No infrared receiver entities were found. Make sure your IR receiver device is adopted and connected in Home Assistant."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Timing options",
+        "description": "Tune the timing windows to match your remote hardware.",
+        "data": {
+          "debounce_window": "Debounce window (s)",
+          "new_press_window": "New-press gap (s)",
+          "double_click_window": "Double-click window (s)",
+          "learn_timeout": "Learn timeout (s)",
+          "immediate_single": "Fire single press immediately"
+        },
+        "data_description": {
+          "debounce_window": "Signals arriving faster than this are treated as repeats and ignored.",
+          "new_press_window": "Gap required before the same button is treated as a new press rather than a double-click.",
+          "double_click_window": "Maximum gap between two presses to be counted as a double-click.",
+          "learn_timeout": "How long to wait for an IR signal during the Learn button flow.",
+          "immediate_single": "When enabled, single presses fire immediately; a second press within the double-click window fires an additional _2x event. When disabled, single press is held until the double-click window expires (adds latency)."
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "button": {
+      "initiate_flow": {
+        "user": "Add button"
+      },
+      "entry_type": "Button",
+      "step": {
+        "user": {},
+        "name": {
+          "title": "Name this button",
+          "description": "Signal captured successfully. Give this button a name so you can use it in automations.",
+          "data": {
+            "name": "Button name"
+          }
+        },
+        "timeout": {
+          "title": "No signal detected",
+          "description": "No IR signal was received within the timeout period. Point your remote directly at the receiver and press the button firmly, then try again."
+        }
+      },
+      "progress": {
+        "press_button": "Press the button on your remote now…"
+      },
+      "abort": {
+        "capture_failed": "Failed to capture IR signal due to an unexpected error."
+      }
+    }
+  },
+  "entity": {
+    "event": {
+      "buttons": {
+        "name": "Buttons",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "unknown": "Unknown button"
+            }
+          }
+        }
+      }
+    }
+  }
+}
