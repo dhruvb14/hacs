@@ -2,6 +2,13 @@
 
 Custom Home Assistant integrations distributed via [HACS](https://hacs.xyz).
 
+# Why I created
+
+I've been using a SideClick remote attached to my Apple TV to trigger Hue light via scenes in Home Assistant for about a year now. The setup worked, but it was a mess — ESPHome flashed to an IR receiver, MQTT bridging signals into HA, and a pile of custom automation logic just to map button presses to scenes. Every time something broke I had to dig back into the whole stack.
+
+![Sideclick remote attached to Apple TV Remote](docs/screenshots/SideClick.png)
+
+
 ## Integrations
 
 | Integration | Description | HA Version |
