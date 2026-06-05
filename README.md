@@ -76,15 +76,19 @@ The integration creates one **event** entity per configured receiver. Use it
 as an automation trigger:
 
 ```yaml
-trigger:
-  - platform: state
-    entity_id: event.living_room_tv_remote_buttons
-    attribute: event_type
-    to: "power"           # single press
-    # to: "power_2x"      # double-click
+trigger: state
+entity_id:
+  - event.living_room_ir_reciever_buttons
+attribute: event_type
+to:
+  - Movie Button
+  - Movie Button_2x
+id: button_2
 ```
 
-Or via the UI: **Trigger → Entity → Event entity → event_type equals `power`**.
+Or via the UI: **Add Trigger → State → Entity → Event entity → event_type equals `Movie Button`**.
+
+![Example in UI for Automation](docs/screenshots/06-automation-example.png)
 
 ### Options (timing tuning)
 
