@@ -4,7 +4,7 @@ All notable changes to **IR Remote Buttons** are documented here.
 
 ---
 
-## [1.0.0] — 2026-06-05
+## [0.4.0] — 2026-06-05
 
 Initial public release via HACS.
 
