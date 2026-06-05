@@ -47,19 +47,33 @@
       },
       "entry_type": "Button",
       "step": {
-        "user": {},
+        "user": {
+          "title": "Add button",
+          "description": "How would you like to add this button?",
+          "data": {
+            "learn_method": "Method"
+          }
+        },
+        "capture": {},
         "ready": {
           "title": "First press captured",
           "description": "Signal locked in. When you're ready to press the same button again, click **Submit** to start listening."
         },
         "confirm": {},
+        "manual": {
+          "title": "Enter button code",
+          "description": "Paste the raw bit string from your command map (e.g. `010101111110001110000010011111011`) or enter a decoded NEC code (e.g. `nec:0101:0f`). The `raw:` prefix is optional.",
+          "data": {
+            "code": "Button code"
+          }
+        },
         "mismatch": {
           "title": "Signals didn't match",
           "description": "The two presses produced different signals. This can happen with noisy receivers or if you accidentally pressed a different button. Press **Try again** to start over."
         },
         "name": {
           "title": "Name this button",
-          "description": "Both presses matched — signal confirmed. Give this button a name so you can use it in automations.",
+          "description": "Give this button a name so you can use it in automations.",
           "data": {
             "name": "Button name"
           }
@@ -72,6 +86,9 @@
       "progress": {
         "press_button": "Press the button on your remote now…",
         "press_button_again": "Got it — now press the **same button** again to confirm."
+      },
+      "error": {
+        "invalid_code": "Invalid format. Enter a raw bit string (e.g. 010101…) or a decoded NEC code (e.g. nec:0101:0f)."
       },
       "abort": {
         "capture_failed": "Failed to capture IR signal due to an unexpected error."
