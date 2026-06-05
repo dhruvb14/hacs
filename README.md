@@ -44,6 +44,28 @@ automations can trigger on — including double-click variants.
 Each time you add a button the integration reloads so the event entity's
 `event_types` list is updated.
 
+### UI walkthrough
+
+**1. Choose how to add the button**
+
+![Add button — method choice](docs/screenshots/01-add-button-method.png)
+
+**2. Press the button on your remote** (learn flow)
+
+![Press button — listening](docs/screenshots/02-press-button-listening.png)
+
+**3. First press captured — confirm you're ready for the second press**
+
+![First press captured](docs/screenshots/03-first-press-captured.png)
+
+**4a. Both presses matched — name the button**
+
+![Name this button](docs/screenshots/04-name-button.png)
+
+**4b. Signals didn't match — try again**
+
+![Signals didn't match](docs/screenshots/05-signals-mismatch.png)
+
 ### Using in automations
 
 The integration creates one **event** entity per configured receiver. Use it
