@@ -133,18 +133,22 @@ class IrRemoteOptionsFlow(OptionsFlow):
 class LearnButtonSubentryFlow(ConfigSubentryFlow):
     """Learn one IR button via two matching captures, then name it.
 
-    Requiring two identical fingerprints in a row filters out noise captures
-    that would otherwise produce an "unknown" event at runtime.
+    Flow:
+      1. user    (progress) — first press; waits for signal + debounce silence
+      2. ready   (form)     — explicit "Continue when ready" before second press
+      3. confirm (progress) — second press; must match first fingerprint
+      4. name    (form)     — name the confirmed button
+      Branches: mismatch (form) on fingerprint disagreement; timeout (form) on no signal.
     """
 
     _capture_task: asyncio.Task[str] | None = None
-    _first_fingerprint: str | None = None   # candidate from first press
-    _fingerprint: str | None = None          # confirmed fingerprint (both presses matched)
+    _first_fingerprint: str | None = None
+    _fingerprint: str | None = None
 
     async def async_step_user(
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
-        """First press — capture the initial signal."""
+        """First press — listen until a signal settles, then pause for user."""
         if self._capture_task is None:
             self._first_fingerprint = None
             self._capture_task = self.hass.async_create_task(self._async_capture())
@@ -166,12 +170,20 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
             return self.async_abort(reason="capture_failed")
 
         self._capture_task = None
-        return self.async_show_progress_done(next_step_id="confirm")
+        return self.async_show_progress_done(next_step_id="ready")
+
+    async def async_step_ready(
+        self, user_input: dict | None = None
+    ) -> SubentryFlowResult:
+        """Pause — user confirms they're ready before the second press begins."""
+        if user_input is not None:
+            return await self.async_step_confirm()
+        return self.async_show_form(step_id="ready", data_schema=vol.Schema({}))
 
     async def async_step_confirm(
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
-        """Second press — must produce the same fingerprint to confirm."""
+        """Second press — must settle to the same fingerprint as the first."""
         if self._capture_task is None:
             self._capture_task = self.hass.async_create_task(self._async_capture())
 
@@ -202,7 +214,7 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
     async def async_step_mismatch(
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
-        """The two presses didn't match — offer to try again from scratch."""
+        """The two presses didn't match — offer to start over."""
         if user_input is not None:
             self._capture_task = None
             self._first_fingerprint = None
@@ -238,30 +250,43 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(step_id="timeout", data_schema=vol.Schema({}))
 
     async def _async_capture(self) -> str:
-        """Subscribe to the receiver and return the first debounced fingerprint."""
+        """Subscribe to the receiver and resolve after debounce_window of silence.
+
+        Rather than resolving on the first signal received, we track the most
+        recent fingerprint and start a timer each time a signal arrives. The
+        future only resolves once no new signal has been seen for debounce_window
+        seconds. This filters noise spikes and IR repeat frames, so the captured
+        fingerprint always represents a complete, stable transmission.
+        """
         entry = self._get_entry()
         receiver_id: str = entry.data[CONF_RECEIVER]
-        learn_timeout: float = entry.options.get(
-            OPT_LEARN_TIMEOUT, DEFAULT_LEARN_TIMEOUT
-        )
+        learn_timeout: float = entry.options.get(OPT_LEARN_TIMEOUT, DEFAULT_LEARN_TIMEOUT)
+        debounce: float = entry.options.get(OPT_DEBOUNCE_WINDOW, DEFAULT_DEBOUNCE_WINDOW)
 
-        fut: asyncio.Future[str] = self.hass.loop.create_future()
-        last_t = 0.0
+        loop = self.hass.loop
+        fut: asyncio.Future[str] = loop.create_future()
+        last_fp: list[str] = []
+        settle_handle: list = [None]
 
         @callback
         def on_signal(signal: InfraredReceivedSignal) -> None:
-            nonlocal last_t
-            now = self.hass.loop.time()
-            if now - last_t < 0.15:
-                last_t = now
-                return
-            last_t = now
-            if not fut.done():
-                fut.set_result(compute_fingerprint(signal.timings))
+            last_fp.clear()
+            last_fp.append(compute_fingerprint(signal.timings))
+            if settle_handle[0] is not None:
+                settle_handle[0].cancel()
+            settle_handle[0] = loop.call_later(debounce, _settle)
+
+        @callback
+        def _settle() -> None:
+            settle_handle[0] = None
+            if not fut.done() and last_fp:
+                fut.set_result(last_fp[0])
 
         unsub = async_subscribe_receiver(self.hass, receiver_id, on_signal)
         try:
             async with asyncio.timeout(learn_timeout):
                 return await fut
         finally:
+            if settle_handle[0] is not None:
+                settle_handle[0].cancel()
             unsub()

@@ -48,6 +48,10 @@
       "entry_type": "Button",
       "step": {
         "user": {},
+        "ready": {
+          "title": "First press captured",
+          "description": "Signal locked in. When you're ready to press the same button again, click **Submit** to start listening."
+        },
         "confirm": {},
         "mismatch": {
           "title": "Signals didn't match",
