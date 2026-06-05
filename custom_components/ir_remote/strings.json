@@ -48,9 +48,14 @@
       "entry_type": "Button",
       "step": {
         "user": {},
+        "confirm": {},
+        "mismatch": {
+          "title": "Signals didn't match",
+          "description": "The two presses produced different signals. This can happen with noisy receivers or if you accidentally pressed a different button. Press **Try again** to start over."
+        },
         "name": {
           "title": "Name this button",
-          "description": "Signal captured successfully. Give this button a name so you can use it in automations.",
+          "description": "Both presses matched — signal confirmed. Give this button a name so you can use it in automations.",
           "data": {
             "name": "Button name"
           }
@@ -61,7 +66,8 @@
         }
       },
       "progress": {
-        "press_button": "Press the button on your remote now…"
+        "press_button": "Press the button on your remote now…",
+        "press_button_again": "Got it — now press the **same button** again to confirm."
       },
       "abort": {
         "capture_failed": "Failed to capture IR signal due to an unexpected error."

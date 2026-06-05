@@ -1,7 +1,7 @@
 {
   "domain": "ir_remote",
   "name": "IR Remote Buttons",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "codeowners": ["@dhruvb14"],
   "config_flow": true,
   "dependencies": ["infrared"],

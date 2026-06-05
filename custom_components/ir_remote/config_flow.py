@@ -118,7 +118,7 @@ class IrRemoteOptionsFlow(OptionsFlow):
                     vol.Optional(
                         OPT_LEARN_TIMEOUT,
                         default=opts.get(OPT_LEARN_TIMEOUT, DEFAULT_LEARN_TIMEOUT),
-                    ): vol.All(vol.Coerce(float), vol.Range(min=5.0, max=60.0)),
+                    ): vol.All(vol.Coerce(float), vol.Range(min=5.0, max=120.0)),
                     vol.Optional(
                         OPT_IMMEDIATE_SINGLE,
                         default=opts.get(
@@ -131,15 +131,22 @@ class IrRemoteOptionsFlow(OptionsFlow):
 
 
 class LearnButtonSubentryFlow(ConfigSubentryFlow):
-    """Learn one IR button via a live capture, then name it."""
+    """Learn one IR button via two matching captures, then name it.
+
+    Requiring two identical fingerprints in a row filters out noise captures
+    that would otherwise produce an "unknown" event at runtime.
+    """
 
     _capture_task: asyncio.Task[str] | None = None
-    _fingerprint: str | None = None
+    _first_fingerprint: str | None = None   # candidate from first press
+    _fingerprint: str | None = None          # confirmed fingerprint (both presses matched)
 
     async def async_step_user(
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
+        """First press — capture the initial signal."""
         if self._capture_task is None:
+            self._first_fingerprint = None
             self._capture_task = self.hass.async_create_task(self._async_capture())
 
         if not self._capture_task.done():
@@ -150,7 +157,7 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
             )
 
         try:
-            self._fingerprint = self._capture_task.result()
+            self._first_fingerprint = self._capture_task.result()
         except TimeoutError:
             self._capture_task = None
             return self.async_show_progress_done(next_step_id="timeout")
@@ -159,7 +166,48 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
             return self.async_abort(reason="capture_failed")
 
         self._capture_task = None
+        return self.async_show_progress_done(next_step_id="confirm")
+
+    async def async_step_confirm(
+        self, user_input: dict | None = None
+    ) -> SubentryFlowResult:
+        """Second press — must produce the same fingerprint to confirm."""
+        if self._capture_task is None:
+            self._capture_task = self.hass.async_create_task(self._async_capture())
+
+        if not self._capture_task.done():
+            return self.async_show_progress(
+                step_id="confirm",
+                progress_action="press_button_again",
+                progress_task=self._capture_task,
+            )
+
+        try:
+            second_fp = self._capture_task.result()
+        except TimeoutError:
+            self._capture_task = None
+            return self.async_show_progress_done(next_step_id="timeout")
+        except Exception:
+            self._capture_task = None
+            return self.async_abort(reason="capture_failed")
+
+        self._capture_task = None
+
+        if second_fp != self._first_fingerprint:
+            return self.async_show_progress_done(next_step_id="mismatch")
+
+        self._fingerprint = second_fp
         return self.async_show_progress_done(next_step_id="name")
+
+    async def async_step_mismatch(
+        self, user_input: dict | None = None
+    ) -> SubentryFlowResult:
+        """The two presses didn't match — offer to try again from scratch."""
+        if user_input is not None:
+            self._capture_task = None
+            self._first_fingerprint = None
+            return await self.async_step_user()
+        return self.async_show_form(step_id="mismatch", data_schema=vol.Schema({}))
 
     async def async_step_name(
         self, user_input: dict | None = None
@@ -185,7 +233,6 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
         if user_input is not None:
-            # "Try again" button — restart the capture.
             self._capture_task = None
             return await self.async_step_user()
         return self.async_show_form(step_id="timeout", data_schema=vol.Schema({}))
