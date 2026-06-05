@@ -250,43 +250,37 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(step_id="timeout", data_schema=vol.Schema({}))
 
     async def _async_capture(self) -> str:
-        """Subscribe to the receiver and resolve after debounce_window of silence.
+        """Subscribe to the receiver and return the first stable fingerprint.
 
-        Rather than resolving on the first signal received, we track the most
-        recent fingerprint and start a timer each time a signal arrives. The
-        future only resolves once no new signal has been seen for debounce_window
-        seconds. This filters noise spikes and IR repeat frames, so the captured
-        fingerprint always represents a complete, stable transmission.
+        Captures the very first signal that arrives after a debounce_window gap.
+        IR remotes send the full initial frame first, then shorter repeat frames
+        every ~110 ms while held. By resolving on the first signal (not the last),
+        we always capture the complete initial frame — repeat frames are dropped
+        by the debounce check. The configured debounce_window is used so the
+        behaviour matches what the user has tuned for their hardware.
         """
         entry = self._get_entry()
         receiver_id: str = entry.data[CONF_RECEIVER]
         learn_timeout: float = entry.options.get(OPT_LEARN_TIMEOUT, DEFAULT_LEARN_TIMEOUT)
         debounce: float = entry.options.get(OPT_DEBOUNCE_WINDOW, DEFAULT_DEBOUNCE_WINDOW)
 
-        loop = self.hass.loop
-        fut: asyncio.Future[str] = loop.create_future()
-        last_fp: list[str] = []
-        settle_handle: list = [None]
+        fut: asyncio.Future[str] = self.hass.loop.create_future()
+        last_t: float = 0.0
 
         @callback
         def on_signal(signal: InfraredReceivedSignal) -> None:
-            last_fp.clear()
-            last_fp.append(compute_fingerprint(signal.timings))
-            if settle_handle[0] is not None:
-                settle_handle[0].cancel()
-            settle_handle[0] = loop.call_later(debounce, _settle)
-
-        @callback
-        def _settle() -> None:
-            settle_handle[0] = None
-            if not fut.done() and last_fp:
-                fut.set_result(last_fp[0])
+            nonlocal last_t
+            now = self.hass.loop.time()
+            if now - last_t < debounce:
+                last_t = now
+                return
+            last_t = now
+            if not fut.done():
+                fut.set_result(compute_fingerprint(signal.timings))
 
         unsub = async_subscribe_receiver(self.hass, receiver_id, on_signal)
         try:
             async with asyncio.timeout(learn_timeout):
                 return await fut
         finally:
-            if settle_handle[0] is not None:
-                settle_handle[0].cancel()
             unsub()
