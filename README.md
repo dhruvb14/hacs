@@ -46,6 +46,10 @@ Each time you add a button the integration reloads so the event entity's
 
 ### UI walkthrough
 
+**Integration overview** — click **Add button** (top-right) to start learning a new button
+
+![Integration overview — Add button highlighted](docs/screenshots/00-integration-overview.png)
+
 **1. Choose how to add the button**
 
 ![Add button — method choice](docs/screenshots/01-add-button-method.png)
