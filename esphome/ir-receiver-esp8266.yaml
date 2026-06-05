@@ -68,9 +68,15 @@ remote_receiver:
     mode:
       input: true
       pullup: true
-  idle: 25ms
-  buffer_size: 2kb
-  tolerance: 30%            # higher than ESP32 default to compensate for bit-bang jitter
+  # idle marks the inter-frame gap — 25 ms is fine for NEC but non-standard
+  # remotes with long bit patterns (e.g. 33-bit) can have slower trailing
+  # edges. Raise to 40 ms if the receiver delivers split/truncated frames.
+  idle: 40ms
+  buffer_size: 4kb          # larger buffer for long 33-bit style codes
+  # ESP8266 bit-bang jitter is typically ±15–20 %. 35 % gives enough headroom
+  # without being so wide that adjacent similar codes match each other.
+  # Lower to 25 % only if you see frequent false-matches between buttons.
+  tolerance: 35%
   filter: 50us              # ignore noise spikes shorter than this
   # dump: raw               # uncomment to log raw timings during setup
 

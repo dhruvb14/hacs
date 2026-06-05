@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 import voluptuous as vol
 from homeassistant.components.infrared import (
@@ -17,7 +18,13 @@ from homeassistant.config_entries import (
     SubentryFlowResult,
 )
 from homeassistant.core import callback
-from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
+from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .const import (
     CONF_FINGERPRINT,
@@ -36,6 +43,30 @@ from .const import (
     OPT_NEW_PRESS_WINDOW,
 )
 from .engine import fingerprint as compute_fingerprint, suggest_name
+
+_CONF_METHOD = "learn_method"
+_METHOD_CAPTURE = "capture"
+_METHOD_MANUAL = "manual"
+
+
+def _normalize_fingerprint(code: str) -> str | None:
+    """Normalize a user-entered code string to a stored fingerprint.
+
+    Accepts:
+      - Raw bit string:          "010101111110001110000010011111011"
+      - Prefixed raw bit string: "raw:010101111110001110000010011111011"
+      - NEC address:command:     "nec:0101:0f"
+
+    Returns the canonical fingerprint string, or None if the format is invalid.
+    """
+    code = code.strip()
+    if re.fullmatch(r"[01]+", code):
+        return f"raw:{code}"
+    if re.fullmatch(r"raw:[01]+", code):
+        return code
+    if re.fullmatch(r"nec:[0-9a-fA-F]{4}:[0-9a-fA-F]{2}", code, re.IGNORECASE):
+        return code.lower()
+    return None
 
 
 class IrRemoteConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -131,14 +162,16 @@ class IrRemoteOptionsFlow(OptionsFlow):
 
 
 class LearnButtonSubentryFlow(ConfigSubentryFlow):
-    """Learn one IR button via two matching captures, then name it.
+    """Learn one IR button and name it.
 
-    Flow:
-      1. user    (progress) — first press; waits for signal + debounce silence
-      2. ready   (form)     — explicit "Continue when ready" before second press
-      3. confirm (progress) — second press; must match first fingerprint
-      4. name    (form)     — name the confirmed button
-      Branches: mismatch (form) on fingerprint disagreement; timeout (form) on no signal.
+    Flow (capture path):
+      user (form) → capture (progress) → ready (form) → confirm (progress)
+        → name (form)
+        → mismatch (form) → user
+        → timeout (form) → user
+
+    Flow (manual path):
+      user (form) → manual (form) → name (form)
     """
 
     _capture_task: asyncio.Task[str] | None = None
@@ -148,14 +181,43 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
     async def async_step_user(
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
-        """First press — listen until a signal settles, then pause for user."""
+        """Choose between live capture and manual code entry."""
+        if user_input is not None:
+            if user_input[_CONF_METHOD] == _METHOD_MANUAL:
+                return await self.async_step_manual()
+            # Capture path: start the task and hand off to the progress step.
+            self._first_fingerprint = None
+            self._capture_task = self.hass.async_create_task(self._async_capture())
+            return await self.async_step_capture()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(_CONF_METHOD, default=_METHOD_CAPTURE): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": _METHOD_CAPTURE, "label": "Learn from remote"},
+                                {"value": _METHOD_MANUAL, "label": "Enter code manually"},
+                            ],
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_capture(
+        self, user_input: dict | None = None
+    ) -> SubentryFlowResult:
+        """First press — listen for the initial IR frame."""
         if self._capture_task is None:
             self._first_fingerprint = None
             self._capture_task = self.hass.async_create_task(self._async_capture())
 
         if not self._capture_task.done():
             return self.async_show_progress(
-                step_id="user",
+                step_id="capture",
                 progress_action="press_button",
                 progress_task=self._capture_task,
             )
@@ -175,7 +237,7 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
     async def async_step_ready(
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
-        """Pause — user confirms they're ready before the second press begins."""
+        """Pause — user confirms they're ready for the second press."""
         if user_input is not None:
             return await self.async_step_confirm()
         return self.async_show_form(step_id="ready", data_schema=vol.Schema({}))
@@ -183,7 +245,7 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
     async def async_step_confirm(
         self, user_input: dict | None = None
     ) -> SubentryFlowResult:
-        """Second press — must settle to the same fingerprint as the first."""
+        """Second press — must match the first fingerprint."""
         if self._capture_task is None:
             self._capture_task = self.hass.async_create_task(self._async_capture())
 
@@ -210,6 +272,26 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
 
         self._fingerprint = second_fp
         return self.async_show_progress_done(next_step_id="name")
+
+    async def async_step_manual(
+        self, user_input: dict | None = None
+    ) -> SubentryFlowResult:
+        """Enter a button code directly — accepts raw bit strings or nec:ADDR:CMD."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            fp = _normalize_fingerprint(user_input["code"])
+            if fp is None:
+                errors["code"] = "invalid_code"
+            else:
+                self._fingerprint = fp
+                return await self.async_step_name()
+
+        return self.async_show_form(
+            step_id="manual",
+            data_schema=vol.Schema({vol.Required("code"): str}),
+            errors=errors,
+        )
 
     async def async_step_mismatch(
         self, user_input: dict | None = None
@@ -250,15 +332,7 @@ class LearnButtonSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(step_id="timeout", data_schema=vol.Schema({}))
 
     async def _async_capture(self) -> str:
-        """Subscribe to the receiver and return the first stable fingerprint.
-
-        Captures the very first signal that arrives after a debounce_window gap.
-        IR remotes send the full initial frame first, then shorter repeat frames
-        every ~110 ms while held. By resolving on the first signal (not the last),
-        we always capture the complete initial frame — repeat frames are dropped
-        by the debounce check. The configured debounce_window is used so the
-        behaviour matches what the user has tuned for their hardware.
-        """
+        """Capture the first stable IR signal using the configured debounce window."""
         entry = self._get_entry()
         receiver_id: str = entry.data[CONF_RECEIVER]
         learn_timeout: float = entry.options.get(OPT_LEARN_TIMEOUT, DEFAULT_LEARN_TIMEOUT)
