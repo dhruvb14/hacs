@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "event": {
+      "buttons": {
+        "default": "mdi:remote"
+      }
+    }
+  }
+}
