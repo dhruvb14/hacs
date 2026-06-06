@@ -1,5 +1,12 @@
 # dhruvb14 custom HACS integrations
 
+> [!IMPORTANT]
+> **This repository and its integrations were built with the assistance of AI (Claude by Anthropic).**
+> The code, documentation, ESPHome configs, and all other content were generated and iterated on
+> through an AI-assisted development session. I am the sole human tester and this software is at an
+> early stage (v0.4.0). It may contain bugs or edge cases that haven't been caught yet.
+> Use at your own risk and please report any issues you find.
+
 Custom Home Assistant integrations distributed via [HACS](https://hacs.xyz).
 
 # Why I created
